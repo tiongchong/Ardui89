@@ -38,7 +38,7 @@ BETA 0.3.12 : (25/06/14) add #include <string.h> + Prévoir les STC15F2K16 et K3
 MacOS, Wind'Oz. (Stable)
 
 #To do
-analogRead, analogWrite with ST15 and ST32 series.
+analogWrite with ST15 and ST32 series.
 Stable Linux version.
 
 #Installation and test

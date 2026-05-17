@@ -67,6 +67,46 @@ int fileExists(const char *filename) {
     return is_exist;
 }
 
+int copy_plain_file(const char *srcfile, const char *destfile) {
+    FILE *src = fopen(srcfile, "rb");
+    if (!src) {
+        perror("fake_cpp open source Error !");
+        return -1;
+    }
+
+    FILE *dest = fopen(destfile, "wb");
+    if (!dest) {
+        fclose(src);
+        perror("fake_cpp open destination Error !");
+        return -1;
+    }
+
+    int ch;
+    while ((ch = fgetc(src)) != EOF) {
+        if (fputc(ch, dest) == EOF) {
+            fclose(src);
+            fclose(dest);
+            perror("fake_cpp copy Error !");
+            return -1;
+        }
+    }
+
+    fclose(src);
+    fclose(dest);
+    return 0;
+}
+
+int touch_plain_file(const char *filename) {
+    if (!filename[0]) return 0;
+    FILE *fp = fopen(filename, "w");
+    if (!fp) {
+        perror("fake_cpp dependency file Error !");
+        return -1;
+    }
+    fclose(fp);
+    return 0;
+}
+
 int _8051libraryflag=0;
 
 // Copy all .h and .c and .ccp to dest directory
@@ -108,7 +148,7 @@ int fakelibraries(char *libdest) {
     char currentpath[4096];
     char librariespath[4096];
     char cmdbuffer[4096];
-    int err;
+    int err=0;
 #if defined(_WIN32) || defined(_WIN64)
     sprintf(librariespath,"%s\\Documents\\Arduino\\libraries", getenv("USERPROFILE"));
 #elif defined(__APPLE__) || defined(__MACH__) || defined(__linux__)
@@ -117,7 +157,7 @@ int fakelibraries(char *libdest) {
 #error "OS not supported"
 #endif
     //current path
-    //getcwd(currentpath, sizeof(currentpath));
+    getcwd(currentpath, sizeof(currentpath));
     //Goto to src directory
     struct stat buffer;
     if (stat(libdest, &buffer)) { // test if path exist
@@ -130,7 +170,11 @@ int fakelibraries(char *libdest) {
 #endif
         system(cmdbuffer);
     }
-    chdir(librariespath);
+    if (chdir(librariespath)) {
+        printf("fakelibraries: %s not found, skipping user libraries.\n", librariespath);
+        chdir(currentpath);
+        return 0;
+    }
     cpyheadandc(".", libdest);
     chdir(currentpath);
     printf("fakelibraries Done.\n");
@@ -149,13 +193,17 @@ int main(int argc, char *argv[]) {
         char sdccpath[4096];
         char currentpath[4096];
     } cc_parameters;
-    char cmdbuffer[4096];
-    char argsbuffer[4096];
-    char orgargsbuffer[4096];
+    char cmdbuffer[4096] = "";
+    char argsbuffer[4096] = "";
+    char orgargsbuffer[4096] = "";
+    char preproc_source[4096] = "";
+    char preproc_output[4096] = "";
+    char dep_output[4096] = "";
     
     //Init
     int err=0;
     int includesflag=0;
+    int preproc_merged_flag=0;
     
     sprintf(cc_parameters.currentpath, ".");
     sprintf(cc_parameters.sketchpath, ".");
@@ -175,9 +223,18 @@ int main(int argc, char *argv[]) {
         // test args if option ?
         if (argv[i][0]=='-') {
             sprintf(argsbuffer, "%s %s", argsbuffer, argv[i]);
-            if ((argv[i][1]=='o') || (strstr(argv[i], "--disable-warning")))  {
+            if (!strcmp(argv[i], "-o") && (i + 1 < argc)) {
+                sprintf(preproc_output, "%s", argv[i + 1]);
+                sprintf(argsbuffer, "%s %s", argsbuffer, argv[++i]);
+            } else if (!strcmp(argv[i], "-MF") && (i + 1 < argc)) {
+                sprintf(dep_output, "%s", argv[i + 1]);
+                sprintf(argsbuffer, "%s %s", argsbuffer, argv[++i]);
+            } else if ((argv[i][1]=='o') || (strstr(argv[i], "--disable-warning")))  {
                 sprintf(argsbuffer, "%s %s", argsbuffer, argv[++i]);
             } else if ((argv[i][1]=='I') && (includesflag==0)) includesflag=1; // INCLUDES FILES FLAGS
+        } else if (strstr(argv[i], ".ino.cpp.merged")) {
+            sprintf(preproc_source, "%s", argv[i]);
+            preproc_merged_flag=1;
         } else if (strstr(argv[i], ".ino.cpp") && !strstr(argv[i], ".ino.cpp.")) {
             sprintf(cc_parameters.inofilename,"%s",argv[i]);
             sprintf(cc_parameters.sketchpath,"%s",dirname(argv[i]));
@@ -232,6 +289,17 @@ int main(int argc, char *argv[]) {
         }
         */
     }
+        // Arduino CLI 1.x / IDE 2.x generates a temporary .ino.cpp.merged file
+        // during prototype generation. SDCC does not understand that extension,
+        // so provide the requested preprocessor output directly.
+        if (preproc_merged_flag) {
+            if (preproc_output[0] && strcmp(preproc_output, "/dev/null") && strcmp(preproc_output, "NUL")) {
+                err=copy_plain_file(preproc_source, preproc_output);
+            }
+            if (!err) err=touch_plain_file(dep_output);
+            printf("fake_cpp preprocessor passthrough Done.\n");
+            return err;
+        }
         // IF FILES FLAGS INCLUDE DETECTED / ADD SKECTH PATH
         if (includesflag)  {
             sprintf(argsbuffer, "%s -I%s -I%s", argsbuffer,  cc_parameters.currentpath, cc_parameters.sketchpath);

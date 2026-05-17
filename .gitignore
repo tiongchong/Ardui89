@@ -1,5 +1,7 @@
 ## macOS
 .DS_Store
+._*
+__MACOSX/
 
 ## Archives
 *.zip
@@ -19,4 +21,3 @@ package-IDE-0.4.2/tools/python3-3.8-stcgal-0.3-x86_64-apple-darwin/
 package-IDE-0.4.2/tools/sdcc-4.4.0-i686-mingw32/
 package-IDE-0.4.2/tools/sdcc-4.4.0-i686-pc-linux-gnu/
 package-IDE-0.4.2/tools/sdcc-4.4.0-x86_64-apple-darwin/
-
